@@ -1,7 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# OPTIONS_GHC -Wall #-}
-
-module Main (main) where
+module Main where
 
 import Control.Monad
 import Data.Ratio
