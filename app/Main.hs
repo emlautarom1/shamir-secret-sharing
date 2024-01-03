@@ -18,7 +18,7 @@ type I = Int
 
 type X = Integer
 
-type Y = Rational
+type Y = Ratio Integer
 
 type Point = (X, Y)
 
