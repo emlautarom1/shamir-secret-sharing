@@ -43,7 +43,7 @@ horner coefs x =
   -- sum $ [coef * x ^ i | (i, coef) <- indexed coefs]
   -- Ex:
   -- coefs = [65, 15]
-  -- horner coefs x = [65 * x ^ 0 + 15 * x ^ 1]
+  -- horner coefs = \x -> (65 * x ^ 0) + (15 * x ^ 1)
   foldr (\a !acc -> a + acc * x) 0 coefs
 
 -- >>> horner [65, 15] 0
