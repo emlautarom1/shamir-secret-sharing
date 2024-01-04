@@ -63,7 +63,8 @@ lagrange i xs x =
 -- 1 % 1
 
 reconstruct :: [Point] -> F
-reconstruct points x = sum [yi * lagrange i xs x | (i, yi) <- indexed ys]
+reconstruct points x =
+  sum [yi * lagrange i xs x | (i, yi) <- indexed ys]
   where
     (xs, ys) = unzip points
 
