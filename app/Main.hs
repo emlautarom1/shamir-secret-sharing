@@ -1,11 +1,22 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+
 module Main where
 
 import Control.Monad
-import Data.Ratio
+import Data.Data
+import Data.Modular
+import GHC.TypeLits
 import System.Random
 import System.Random.Shuffle
 
 type Secret = Integer
+
+type P = (2 ^ 257 - 93)
+
+p :: Integer
+p = fromIntegral $ natVal (Proxy :: Proxy P)
 
 type N = Int
 
@@ -13,9 +24,9 @@ type K = Int
 
 type I = Int
 
-type X = Integer
+type X = Integer / P
 
-type Y = Ratio Integer
+type Y = Integer / P
 
 type Point = (X, Y)
 
@@ -24,43 +35,43 @@ type F = X -> Y
 indexed :: [a] -> [(Int, a)]
 indexed = zip [0 ..]
 
-mkF :: [Integer] -> F
+mkF :: [Integer / P] -> F
 mkF coefs x =
   -- [65, 15]
   -- [65 * x ^ 0, 15 * x ^ 1]
-  sum $ [(coef * x ^ i) % 1 | (i, coef) <- indexed coefs]
+  sum $ [coef * x ^ i | (i, coef) <- indexed coefs]
 
 -- >>> mkF [65, 15] 0
--- 65 % 1
+-- 65
 -- >>> mkF [65, 15] 1
--- 80 % 1
+-- 80
 -- >>> mkF [65, 15] 2
--- 95 % 1
+-- 95
 -- >>> mkF [65, 15] 3
--- 110 % 1
+-- 110
 -- >>> mkF [65, 15] 4
--- 125 % 1
+-- 125
 
 shamir :: Secret -> N -> K -> IO [Point]
 shamir secret n k = do
   when (n < k) $ fail "n must be greater than or equal to k"
 
   let degree = k - 1
-  coefs <- (secret :) <$> replicateM degree randomIO
-  let polynomial = mkF coefs
+  coefs <- (secret :) <$> replicateM degree (randomRIO (1, p - 1))
+  let polynomial = mkF $ map (toMod @P) coefs
   let points = [(x, polynomial x) | x <- fromIntegral <$> [1 .. n]]
   pure points
 
 lagrange :: I -> [X] -> F
 lagrange i xs x =
-  product [(x - xj) % (xi - xj) | (j, xj) <- indexed xs, j /= i]
+  product [(x - xj) / (xi - xj) | (j, xj) <- indexed xs, j /= i]
   where
     xi = xs !! i
 
 -- >>> (lagrange 1 [1, 3]) 1
--- 0 % 1
+-- 0
 -- >>> (lagrange 1 [1, 3]) 3
--- 1 % 1
+-- 1
 
 reconstruct :: [Point] -> F
 reconstruct points x =
@@ -69,11 +80,7 @@ reconstruct points x =
     (xs, ys) = unzip points
 
 recover :: [Point] -> Secret
-recover points =
-  let y = reconstruct points 0
-   in if denominator y == 1
-        then numerator y
-        else error "failed to compute secret"
+recover points = unMod $ reconstruct points 0
 
 -- f(x) = 65 + 15x
 -- deg(f) = 1
