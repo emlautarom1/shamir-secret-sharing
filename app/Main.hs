@@ -24,15 +24,6 @@ type F = X -> Y
 indexed :: [a] -> [(Int, a)]
 indexed = zip [0 ..]
 
-except :: [a] -> Int -> ([a], a)
-xs `except` i = foldr f ([], error "index out of bounds") (indexed xs)
-  where
-    f :: (Int, a) -> ([a], a) -> ([a], a)
-    f (idx, x) (xs', x') = if idx == i then (xs', x) else (x : xs', x')
-
--- >>> [0 .. 9] `except` 9
--- ([0,1,2,3,4,5,6,7,8],9)
-
 mkF :: [Integer] -> F
 mkF coefs x =
   -- [65, 15]
@@ -60,23 +51,21 @@ shamir secret n k = do
   let points = [(x, polynomial x) | x <- fromIntegral <$> [1 .. n]]
   pure points
 
-lagrange :: [X] -> I -> F
-lagrange xs i x =
-  product [(x - xj) % (xi - xj) | xj <- xs']
+lagrange :: I -> [X] -> F
+lagrange i xs x =
+  product [(x - xj) % (xi - xj) | (j, xj) <- indexed xs, j /= i]
   where
-    (xs', xi) = xs `except` i
+    xi = xs !! i
 
--- >>> (lagrange [1, 3] 1) 1
+-- >>> (lagrange 1 [1, 3]) 1
 -- 0 % 1
--- >>> (lagrange [1, 3] 1) 3
+-- >>> (lagrange 1 [1, 3]) 3
 -- 1 % 1
 
 reconstruct :: [Point] -> F
-reconstruct points x = sum [term i | i <- [0 .. k - 1]]
+reconstruct points x = sum [yi * lagrange i xs x | (i, yi) <- indexed ys]
   where
-    term i = (ys !! i) * lagrange xs i x
     (xs, ys) = unzip points
-    k = length points
 
 recover :: [Point] -> Secret
 recover points =
