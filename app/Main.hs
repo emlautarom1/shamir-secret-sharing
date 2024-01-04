@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Main where
 
@@ -35,21 +36,25 @@ type F = X -> Y
 indexed :: [a] -> [(Int, a)]
 indexed = zip [0 ..]
 
-mkF :: [Integer / P] -> F
-mkF coefs x =
-  -- [65, 15]
-  -- [65 * x ^ 0, 15 * x ^ 1]
-  sum $ [coef * x ^ i | (i, coef) <- indexed coefs]
+-- | `Horner's Rule` for polynomial evaluation
+horner :: [Integer / P] -> F
+horner coefs x =
+  -- Equivalent to:
+  -- sum $ [coef * x ^ i | (i, coef) <- indexed coefs]
+  -- Ex:
+  -- coefs = [65, 15]
+  -- horner coefs x = [65 * x ^ 0 + 15 * x ^ 1]
+  foldr (\a !acc -> a + acc * x) 0 coefs
 
--- >>> mkF [65, 15] 0
+-- >>> horner [65, 15] 0
 -- 65
--- >>> mkF [65, 15] 1
+-- >>> horner [65, 15] 1
 -- 80
--- >>> mkF [65, 15] 2
+-- >>> horner [65, 15] 2
 -- 95
--- >>> mkF [65, 15] 3
+-- >>> horner [65, 15] 3
 -- 110
--- >>> mkF [65, 15] 4
+-- >>> horner [65, 15] 4
 -- 125
 
 shamir :: Secret -> N -> K -> IO [Point]
@@ -58,7 +63,7 @@ shamir secret n k = do
 
   let degree = k - 1
   coefs <- (secret :) <$> replicateM degree (randomRIO (1, p - 1))
-  let polynomial = mkF $ map (toMod @P) coefs
+  let polynomial = horner $ map (toMod @P) coefs
   let points = [(x, polynomial x) | x <- fromIntegral <$> [1 .. n]]
   pure points
 
