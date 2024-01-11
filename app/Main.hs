@@ -1,10 +1,13 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE BangPatterns #-}
 
 module Main where
 
+import Control.Concurrent
+import Control.Concurrent.Async
 import Control.Monad
 import Data.Data
 import Data.Modular
@@ -97,8 +100,11 @@ recover points = unMod $ reconstruct points 0
 -- >>> recover [(2, 95), (4, 125)]
 -- 65
 
-main :: IO ()
-main = do
+----------------------------------------
+-- Shamir Secret Sharing
+
+sss :: IO ()
+sss = do
   let secret = 1337
   let n = 5
   let k = 3
@@ -117,3 +123,59 @@ main = do
     if guess == secret
       then "success!"
       else "failure!"
+
+----------------------------------------
+-- DKG
+
+data Msg = Msg {from :: Int, at :: Integer / P, value :: Integer / P}
+  deriving (Show, Eq)
+
+dkg :: IO ()
+dkg = do
+  let n = 5
+  let k = 3
+
+  putStrLn $ "n: " <> show n <> ", k: " <> show k
+
+  sharedSecret :: MVar (Integer / P) <- newMVar (toMod @P 0)
+  channels :: [Chan Msg] <- replicateM n newChan
+  sharedPoints :: [Point] <- forConcurrently [1 .. n] $ \me -> do
+    let me' = toMod @P (fromIntegral me)
+    let myChannel = channels !! (me - 1)
+
+    mySecret <- randomRIO (1, p - 1)
+    myPoints <- shamir mySecret n k
+
+    modifyMVar_ sharedSecret $ \acc -> do
+      return $ acc + toMod mySecret
+
+    forM_ [1 .. n] $ \to -> do
+      let (x, y) = myPoints !! (to - 1)
+      let toChannel = channels !! (to - 1)
+      writeChan toChannel $ Msg {from = me, at = x, value = y}
+
+    f_me_atMe <- replicateM n $ do
+      msg <- readChan myChannel
+      when (at msg /= me') $ do
+        fail $ "participant " <> show (from msg) <> " sent a message at " <> show (at msg) <> " instead of " <> show me
+      pure $ value msg
+
+    let f_AtMe = sum f_me_atMe
+    return (me', f_AtMe)
+
+  when (length sharedPoints /= n) $ fail "not enough points"
+
+  sharedPoints' <- take k <$> shuffleM sharedPoints
+  putStrLn $ "k random points: " <> show sharedPoints'
+
+  let guess = recover sharedPoints'
+  putStrLn $ "guess: " <> show guess
+
+  sharedSecret' <- unMod <$> takeMVar sharedSecret
+  putStrLn $
+    if guess == sharedSecret'
+      then "success!"
+      else "failure!"
+
+main :: IO ()
+main = dkg
