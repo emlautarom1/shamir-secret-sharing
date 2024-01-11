@@ -143,24 +143,29 @@ dkg = do
     let me' = toMod @P (fromIntegral me)
     let myChannel = channels !! (me - 1)
 
+    -- Compute [f_me(0), f_me(1), ..., f_me(n)]
     mySecret <- randomRIO (1, p - 1)
     myPoints <- shamir mySecret n k
 
+    -- For testing, we globally store f(0) = f_me(0) + f_me(1) + ... + f_me(n)
     modifyMVar_ sharedSecret $ \acc -> do
       return $ acc + toMod mySecret
 
+    -- To each participant i, send f_me(i)
     forM_ [1 .. n] $ \to -> do
       let (x, y) = myPoints !! (to - 1)
       let toChannel = channels !! (to - 1)
       writeChan toChannel $ Msg {from = me, at = x, value = y}
 
-    f_me_atMe <- replicateM n $ do
+    -- Wait for each participant i to send f_i(me)
+    f_ns_atMe <- replicateM n $ do
       msg <- readChan myChannel
       when (at msg /= me') $ do
         fail $ "participant " <> show (from msg) <> " sent a message at " <> show (at msg) <> " instead of " <> show me
       pure $ value msg
 
-    let f_AtMe = sum f_me_atMe
+    -- Compute f(me) = f_1(me) + f_2(me) + ... + f_n(me)
+    let f_AtMe = sum f_ns_atMe
     return (me', f_AtMe)
 
   when (length sharedPoints /= n) $ fail "not enough points"
@@ -168,6 +173,7 @@ dkg = do
   sharedPoints' <- take k <$> shuffleM sharedPoints
   putStrLn $ "k random points: " <> show sharedPoints'
 
+  -- With k points (i, f(i)) where i = 1, 2, ..., n, we can reconstruct f(0)
   let guess = recover sharedPoints'
   putStrLn $ "guess: " <> show guess
 
