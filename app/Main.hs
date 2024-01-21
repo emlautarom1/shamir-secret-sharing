@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Main (main) where
+module Main where
 
 import Control.Concurrent
 import Control.Monad
@@ -21,7 +21,7 @@ import Effectful.Dispatch.Dynamic
 import Effectful.Fail
 import Effectful.State.Dynamic
 import GHC.TypeLits
-import System.Random
+import System.Random (Random, randomRIO)
 import System.Random.Shuffle
 
 type Secret = Integer
@@ -69,12 +69,12 @@ horner coefs x =
 -- >>> horner [65, 15] 4
 -- 125
 
-shamir :: Secret -> N -> K -> IO [Point]
+shamir :: (Fail :> es, RNG :> es) => Secret -> N -> K -> Eff es [Point]
 shamir secret n k = do
   when (n < k) $ fail "n must be greater than or equal to k"
 
   let degree = k - 1
-  coefs <- (secret :) <$> replicateM degree (randomRIO (1, p - 1))
+  coefs <- (secret :) <$> replicateM degree (randomR (1, p - 1))
   let polynomial = horner $ map (toMod @P) coefs
   let points = [(x, polynomial x) | x <- fromIntegral <$> [1 .. n]]
   pure points
@@ -119,7 +119,7 @@ sss = do
   let k = 3
   putStrLn $ "secret: " <> show secret <> ", n: " <> show n <> ", k: " <> show k
 
-  points <- shamir secret n k
+  points <- runEff . runFailIO . runRandomIO $ shamir secret n k
   putStrLn $ "n points: " <> show points
 
   points' <- take k <$> shuffleM points
@@ -139,13 +139,13 @@ sss = do
 data Msg = Msg {from :: Int, at :: X, value :: Y}
   deriving (Show, Eq)
 
-node :: (Coms :> es, Leak Y :> es, Fail :> es, IOE :> es) => N -> K -> Int -> Eff es Point
+node :: (Coms :> es, Leak Y :> es, Fail :> es, RNG :> es) => N -> K -> Int -> Eff es Point
 node n k me = do
   let me' = toMod @P (fromIntegral me)
 
   -- Compute [f_me(0), f_me(1), ..., f_me(n)]
-  mySecret <- liftIO $ randomRIO (1, p - 1)
-  myPoints <- liftIO $ shamir mySecret n k
+  mySecret <- randomR (1, p - 1)
+  myPoints <- shamir mySecret n k
 
   -- For testing, we globally store f(0) = f_me(0) + f_me(1) + ... + f_me(n)
   leak $ toMod @P mySecret
@@ -174,7 +174,7 @@ dkg = do
   putStrLn $ "n: " <> show n <> ", k: " <> show k
 
   channels :: [Chan Msg] <- replicateM n newChan
-  (sharedPoints :: [Point], sharedSecret :: Y) <- runEff . runFailIO . runLeak 0 . runConcurrent $
+  (sharedPoints :: [Point], sharedSecret :: Y) <- runEff . runFailIO . runRandomIO . runLeak 0 . runConcurrent $
     forConcurrently [1 .. n] $ \me ->
       runComsChannels channels me $ node n k me
 
@@ -227,6 +227,18 @@ leak a = send (Leak a)
 runLeak :: Num s => s -> Eff (Leak s : es) a -> Eff es (a, s)
 runLeak s0 = reinterpret (runStateShared s0) $ \_ -> \case
   Leak a -> modify (+ a)
+
+data RNG :: Effect where
+  RandomR :: (Random a) => (a, a) -> RNG m a
+
+type instance DispatchOf RNG = 'Dynamic
+
+randomR :: (RNG :> es, Random a) => (a, a) -> Eff es a
+randomR = send . RandomR
+
+runRandomIO :: IOE :> es => Eff (RNG : es) a -> Eff es a
+runRandomIO = interpret $ \_ -> \case
+  RandomR range -> liftIO $ randomRIO range
 
 ----------------------------------------
 -- Main
