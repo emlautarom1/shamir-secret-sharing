@@ -136,10 +136,12 @@ sss = do
 ----------------------------------------
 -- DKG
 
-data Msg = Msg {from :: Int, at :: X, value :: Y}
+type NodeId = Int
+
+data Msg = Msg {from :: NodeId, at :: X, value :: Y}
   deriving (Show, Eq)
 
-node :: (Coms :> es, Leak Y :> es, Fail :> es, RNG :> es) => N -> K -> Int -> Eff es Point
+node :: (Coms :> es, Leak Y :> es, Fail :> es, RNG :> es) => N -> K -> NodeId -> Eff es Point
 node n k me = do
   let me' = toMod @P (fromIntegral me)
 
@@ -196,18 +198,18 @@ dkg = do
 -- Effectful
 
 data Coms :: Effect where
-  SendMsg :: Int -> Msg -> Coms m ()
+  SendMsg :: NodeId -> Msg -> Coms m ()
   RecvMsg :: Coms m Msg
 
 type instance DispatchOf Coms = 'Dynamic
 
-sendMsg :: Coms :> es => Int -> Msg -> Eff es ()
+sendMsg :: Coms :> es => NodeId -> Msg -> Eff es ()
 sendMsg to msg = send (SendMsg to msg)
 
 recvMsg :: Coms :> es => Eff es Msg
 recvMsg = send RecvMsg
 
-runComsChannels :: IOE :> es => [Chan Msg] -> Int -> Eff (Coms : es) a -> Eff es a
+runComsChannels :: IOE :> es => [Chan Msg] -> NodeId -> Eff (Coms : es) a -> Eff es a
 runComsChannels channels me = interpret $ \_ -> \case
   SendMsg to msg -> do
     let toChannel = channels !! (to - 1)
