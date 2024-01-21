@@ -175,10 +175,10 @@ dkg = do
 
   putStrLn $ "n: " <> show n <> ", k: " <> show k
 
-  channels :: [Chan Msg] <- replicateM n newChan
-  (sharedPoints :: [Point], sharedSecret :: Y) <- runEff . runFailIO . runRandomIO . runLeak 0 . runConcurrent $
-    forConcurrently [1 .. n] $ \me ->
-      runComsChannels channels me $ node n k me
+  (sharedPoints :: [Point], sharedSecret :: Y) <- withChannelComns n $ \runComns ->
+    runEff . runFailIO . runRandomIO . runLeak 0 . runConcurrent $
+      forConcurrently [1 .. n] $ \me ->
+        runComns me $ node n k me
 
   when (length sharedPoints /= n) $ fail "not enough points"
 
@@ -209,14 +209,16 @@ sendMsg to msg = send (SendMsg to msg)
 recvMsg :: Coms :> es => Eff es Msg
 recvMsg = send RecvMsg
 
-runComsChannels :: IOE :> es => [Chan Msg] -> NodeId -> Eff (Coms : es) a -> Eff es a
-runComsChannels channels me = interpret $ \_ -> \case
-  SendMsg to msg -> do
-    let toChannel = channels !! (to - 1)
-    liftIO $ writeChan toChannel msg
-  RecvMsg -> do
-    let myChannel = channels !! (me - 1)
-    liftIO $ readChan myChannel
+withChannelComns :: IOE :> es => N -> ((NodeId -> Eff (Coms : es) a -> Eff es a) -> IO b) -> IO b
+withChannelComns n prog = do
+  channels <- replicateM n (newChan @Msg)
+  prog $ \me -> interpret $ \_ -> \case
+    SendMsg to msg -> do
+      let toChannel = channels !! (to - 1)
+      liftIO $ writeChan toChannel msg
+    RecvMsg -> do
+      let myChannel = channels !! (me - 1)
+      liftIO $ readChan myChannel
 
 data Leak a :: Effect where
   Leak :: a -> (Leak a) m ()
