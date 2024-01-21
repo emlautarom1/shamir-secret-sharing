@@ -217,7 +217,7 @@ runComsChannels channels me = interpret $ \_ -> \case
     liftIO $ readChan myChannel
 
 data Leak a :: Effect where
-  Leak :: a -> Leak a m ()
+  Leak :: a -> (Leak a) m ()
 
 type instance DispatchOf (Leak a) = 'Dynamic
 
