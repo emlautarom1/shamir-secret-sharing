@@ -141,7 +141,7 @@ type NodeId = Int
 data Msg = Msg {from :: NodeId, at :: X, value :: Y}
   deriving (Show, Eq)
 
-node :: (Coms :> es, Leak Y :> es, Fail :> es, RNG :> es) => N -> K -> NodeId -> Eff es Point
+node :: (Comms :> es, Leak Y :> es, Fail :> es, RNG :> es) => N -> K -> NodeId -> Eff es Point
 node n k me = do
   let me' = toMod @P (fromIntegral me)
 
@@ -175,7 +175,7 @@ dkg = do
 
   putStrLn $ "n: " <> show n <> ", k: " <> show k
 
-  (sharedPoints :: [Point], sharedSecret :: Y) <- withChannelComns n $ \runComns ->
+  (sharedPoints :: [Point], sharedSecret :: Y) <- withChannelComms n $ \runComns ->
     runEff . runFailIO . runRandomIO . runLeak 0 . runConcurrent $
       forConcurrently [1 .. n] $ \me ->
         runComns me $ node n k me
@@ -197,20 +197,20 @@ dkg = do
 ----------------------------------------
 -- Effectful
 
-data Coms :: Effect where
-  SendMsg :: NodeId -> Msg -> Coms m ()
-  RecvMsg :: Coms m Msg
+data Comms :: Effect where
+  SendMsg :: NodeId -> Msg -> Comms m ()
+  RecvMsg :: Comms m Msg
 
-type instance DispatchOf Coms = 'Dynamic
+type instance DispatchOf Comms = 'Dynamic
 
-sendMsg :: (Coms :> es) => NodeId -> Msg -> Eff es ()
+sendMsg :: (Comms :> es) => NodeId -> Msg -> Eff es ()
 sendMsg to msg = send (SendMsg to msg)
 
-recvMsg :: (Coms :> es) => Eff es Msg
+recvMsg :: (Comms :> es) => Eff es Msg
 recvMsg = send RecvMsg
 
-withChannelComns :: (IOE :> es) => N -> ((NodeId -> Eff (Coms : es) a -> Eff es a) -> IO b) -> IO b
-withChannelComns n prog = do
+withChannelComms :: (IOE :> es) => N -> ((NodeId -> Eff (Comms : es) a -> Eff es a) -> IO b) -> IO b
+withChannelComms n prog = do
   channels <- replicateM n (newChan @Msg)
   prog $ \me -> interpret $ \_ -> \case
     SendMsg to msg -> do
