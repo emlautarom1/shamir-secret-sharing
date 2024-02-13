@@ -203,13 +203,13 @@ data Coms :: Effect where
 
 type instance DispatchOf Coms = 'Dynamic
 
-sendMsg :: Coms :> es => NodeId -> Msg -> Eff es ()
+sendMsg :: (Coms :> es) => NodeId -> Msg -> Eff es ()
 sendMsg to msg = send (SendMsg to msg)
 
-recvMsg :: Coms :> es => Eff es Msg
+recvMsg :: (Coms :> es) => Eff es Msg
 recvMsg = send RecvMsg
 
-withChannelComns :: IOE :> es => N -> ((NodeId -> Eff (Coms : es) a -> Eff es a) -> IO b) -> IO b
+withChannelComns :: (IOE :> es) => N -> ((NodeId -> Eff (Coms : es) a -> Eff es a) -> IO b) -> IO b
 withChannelComns n prog = do
   channels <- replicateM n (newChan @Msg)
   prog $ \me -> interpret $ \_ -> \case
@@ -225,10 +225,10 @@ data Leak a :: Effect where
 
 type instance DispatchOf (Leak a) = 'Dynamic
 
-leak :: Leak a :> es => a -> Eff es ()
+leak :: (Leak a :> es) => a -> Eff es ()
 leak a = send (Leak a)
 
-runLeak :: Num s => s -> Eff (Leak s : es) a -> Eff es (a, s)
+runLeak :: (Num s) => s -> Eff (Leak s : es) a -> Eff es (a, s)
 runLeak s0 = reinterpret (runStateShared s0) $ \_ -> \case
   Leak a -> modify (+ a)
 
@@ -240,7 +240,7 @@ type instance DispatchOf RNG = 'Dynamic
 randomR :: (RNG :> es, Random a) => (a, a) -> Eff es a
 randomR = send . RandomR
 
-runRandomIO :: IOE :> es => Eff (RNG : es) a -> Eff es a
+runRandomIO :: (IOE :> es) => Eff (RNG : es) a -> Eff es a
 runRandomIO = interpret $ \_ -> \case
   RandomR range -> liftIO $ randomRIO range
 
